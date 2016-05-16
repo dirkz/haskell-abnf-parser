@@ -38,6 +38,14 @@ parseRepeat = do
   c2 <- maybe Infinity Count <$> parseMaybeInt
   return $ TokenRepeat c1 c2
 
+-- | char-val
+parseCharVal :: Parser String
+parseCharVal = do
+  char '"'
+  s <- many $ oneOf ['\x20'..'\x21'] <|> oneOf ['\x23'..'\x7E']
+  char '"'
+  return s
+
 -- | Base: num-val
 parseNumVal :: Parser Value
 parseNumVal = char '%' >> (parseBinVal <|> parseDecVal <|> parseHexVal)
