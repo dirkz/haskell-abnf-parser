@@ -44,19 +44,19 @@ parseNumVal = char '%' >> (parseBinVal <|> parseDecVal <|> parseHexVal)
 
 -- | Base: bin-val
 parseBinVal :: Parser Value
-parseBinVal = parseGenericVal parseHEXDIG 2 'b'
+parseBinVal = parseGenericVal parseBIT 2 'b'
 
 -- | Base: dec-val
 parseDecVal :: Parser Value
-parseDecVal = parseGenericVal parseHEXDIG 10 'd'
+parseDecVal = parseGenericVal parseDIGIT 10 'd'
 
 -- | Base: hex-val
 parseHexVal :: Parser Value
 parseHexVal = parseGenericVal parseHEXDIG 16 'x'
 
 -- | Base: DIGIT
-parseDigit :: Parser Int
-parseDigit = digitToInt <$> oneOf ['\x30'..'\x39']
+parseDIGIT :: Parser Int
+parseDIGIT = digitToInt <$> oneOf ['\x30'..'\x39']
 
 -- | Base: WSP
 parseWSP :: Parser Char
@@ -66,9 +66,13 @@ parseWSP = char ' ' <|> char '\t'
 parseVCHAR :: Parser Char
 parseVCHAR = oneOf ['\x21'..'\x7E']
 
+-- | Base: BIN
+parseBIT :: Parser Int
+parseBIT = digitToInt <$> oneOf ['\x30'..'\x31']
+
 -- | Base: HEXDIG
 parseHEXDIG :: Parser Int
-parseHEXDIG = parseDigit <|> hexDigit
+parseHEXDIG = parseDIGIT <|> hexDigit
   where
     minusA = flip (-) $ ord 'A' - 10
     hexDigit = minusA <$> ord <$> oneOf ['A'..'F']
@@ -102,7 +106,7 @@ toInt base = fst . foldr fn (0, 1)
 -- | Helper: Try to parse a decimal Int
 parseMaybeInt :: Parser (Maybe Int)
 parseMaybeInt = do
-  ds <- many parseDigit
+  ds <- many parseDIGIT
   if null ds then return Nothing
              else return $ Just $ toInt 10 ds
 
