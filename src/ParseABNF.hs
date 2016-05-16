@@ -38,6 +38,10 @@ parseRepeat = do
   c2 <- maybe Infinity Count <$> parseMaybeInt
   return $ TokenRepeat c1 c2
 
+-- | Base: num-val
+parseNumVal :: Parser Value
+parseNumVal = char '%' >> (parseBinVal <|> parseDecVal <|> parseHexVal)
+
 -- | Base: bin-val
 parseBinVal :: Parser Value
 parseBinVal = parseGenericVal parseHEXDIG 2 'b'
