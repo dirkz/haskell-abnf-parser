@@ -12,10 +12,45 @@ data Value = ValueSingle Int
   deriving (Show, Eq, Ord)
 
 data Token = TokenSkip -- ^ Just skip/ignore that token.
-           | TokenRepeat RepeatCount RepeatCount
-           | TokenRange Int Int
+
+data Repetition = Repetition RepeatCount RepeatCount
   deriving (Show, Eq, Ord)
 
+type RuleName = String
+
+data Definition = DefRef RuleName
+                | DefSeq [Definition]
+                | DefAlt Definition Definition
+                | DefAltAppend Definition
+                | DefGroup Definition
+                | DefRepeat Repetition Definition
+  deriving (Show, Eq, Ord)
+
+parseDefinition :: Parser Definition
+parseDefinition = DefSeq <$> (many1 parseSingleDefinition <?> "at least one definition")
+
+parseSingleDefinition :: Parser Definition
+parseSingleDefinition = do
+  skipWhiteSpace
+  def <- parseAlt <|> parseRuleRef
+  return def
+
+parseAlt :: Parser Definition
+parseAlt = do
+  char '('
+  defs <- (many1 parseDefinition <?> "at least one definition in a group")
+  char ')'
+  return $ DefGroup $ DefSeq defs
+
+skipWhiteSpace :: Parser ()
+skipWhiteSpace = (many $ char ' ' <|> char '\t' <|> continue) >> return ()
+  where
+    continue = (newline >> skipWhiteSpace) >> return ' '
+
+parseRuleRef :: Parser Definition
+parseRuleRef = DefRef <$> parseRuleName
+
+-- | rulename
 parseRuleName :: Parser String
 parseRuleName = do
   c1 <- (letter <?> "alpha as first char of a rulename")
@@ -26,17 +61,22 @@ parseRuleName = do
 skipComment :: Parser Token
 skipComment = char ';' >> many (parseWSP <|> parseVCHAR) >> newline >> return TokenSkip
 
--- | c-nl
+-- | c-wsp, comment or whitespace
+parseCWSP :: Parser Token
+parseCWSP = (parseWSP >> return TokenSkip) <|>
+  (skipCommentOrNewline >> parseWSP >> return TokenSkip)
+
+-- | c-nl, comment or newline
 skipCommentOrNewline :: Parser Token
 skipCommentOrNewline = skipComment <|> (newline >> return TokenSkip)
 
 -- | repeat
-parseRepeat :: Parser Token
+parseRepeat :: Parser Repetition
 parseRepeat = do
   c1 <- maybe (Count 0) Count <$> parseMaybeInt
   char '*'
   c2 <- maybe Infinity Count <$> parseMaybeInt
-  return $ TokenRepeat c1 c2
+  return $ Repetition c1 c2
 
 -- | char-val
 parseCharVal :: Parser String
