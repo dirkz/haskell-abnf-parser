@@ -3,17 +3,19 @@ module ParseABNF where
 import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
 
+data Comment = Comment String
+
 data RepeatCount = Count Int | Infinity
   deriving (Show, Eq, Ord)
 
 data Value = ValueSingle Int
            | ValueSeq [Int]
            | ValueRange Int Int
+           | ValueString String
   deriving (Show, Eq, Ord)
 
-data Token = TokenSkip -- ^ Just skip/ignore that token.
-
-data Repetition = Repetition RepeatCount RepeatCount
+data Repetition = RepeatSingle Int
+                | Repeat RepeatCount RepeatCount
   deriving (Show, Eq, Ord)
 
 type RuleName = String
@@ -24,31 +26,9 @@ data Definition = DefRef RuleName
                 | DefAltAppend Definition
                 | DefGroup Definition
                 | DefRepeat Repetition Definition
+                | DefComment String
+                | DefEmpty
   deriving (Show, Eq, Ord)
-
-parseDefinition :: Parser Definition
-parseDefinition = DefSeq <$> (many1 parseSingleDefinition <?> "at least one definition")
-
-parseSingleDefinition :: Parser Definition
-parseSingleDefinition = do
-  skipWhiteSpace
-  def <- parseAlt <|> parseRuleRef
-  return def
-
-parseAlt :: Parser Definition
-parseAlt = do
-  char '('
-  defs <- (many1 parseDefinition <?> "at least one definition in a group")
-  char ')'
-  return $ DefGroup $ DefSeq defs
-
-skipWhiteSpace :: Parser ()
-skipWhiteSpace = (many $ char ' ' <|> char '\t' <|> continue) >> return ()
-  where
-    continue = (newline >> skipWhiteSpace) >> return ' '
-
-parseRuleRef :: Parser Definition
-parseRuleRef = DefRef <$> parseRuleName
 
 -- | rulename
 parseRuleName :: Parser String
@@ -57,34 +37,56 @@ parseRuleName = do
   cs <- many (letter <|> digit <|> char '-' <?> "alpha-numeric or '-' in rulename")
   return $ c1 : cs
 
+parseElements :: Parser Definition
+parseElements = do
+  alt <- parseAlternation
+  parseCWSP
+  return alt
+
+parseAlternation = undefined
+
 -- | comment
-skipComment :: Parser Token
-skipComment = char ';' >> many (parseWSP <|> parseVCHAR) >> newline >> return TokenSkip
+parseComment :: Parser Comment
+parseComment = do
+  char ';'
+  s <- many (parseWSP <|> parseVCHAR)
+  newline
+  return $ Comment s
 
 -- | c-wsp, comment or whitespace
-parseCWSP :: Parser Token
-parseCWSP = (parseWSP >> return TokenSkip) <|>
-  (skipCommentOrNewline >> parseWSP >> return TokenSkip)
+parseCWSP :: Parser (Maybe Comment)
+parseCWSP = try comment <|> (parseWSP >> return Nothing)
+  where
+   comment = do
+    com <- parseComment
+    parseWSP
+    return $ Just com
 
 -- | c-nl, comment or newline
-skipCommentOrNewline :: Parser Token
-skipCommentOrNewline = skipComment <|> (newline >> return TokenSkip)
+parseCNL :: Parser (Maybe Comment)
+parseCNL = Just <$> parseComment <|> (newline >> return Nothing)
 
 -- | repeat
 parseRepeat :: Parser Repetition
-parseRepeat = do
+parseRepeat = try parseRepeatBoth <|> parseRepeatSingle
+
+parseRepeatSingle :: Parser Repetition
+parseRepeatSingle = many1 parseDIGIT >>= return . toInt 10 >>= return . RepeatSingle
+
+parseRepeatBoth :: Parser Repetition
+parseRepeatBoth = do
   c1 <- maybe (Count 0) Count <$> parseMaybeInt
   char '*'
   c2 <- maybe Infinity Count <$> parseMaybeInt
-  return $ Repetition c1 c2
+  return $ Repeat c1 c2
 
 -- | char-val
-parseCharVal :: Parser String
+parseCharVal :: Parser Value
 parseCharVal = do
   char '"'
   s <- many $ oneOf ['\x20'..'\x21'] <|> oneOf ['\x23'..'\x7E']
   char '"'
-  return s
+  return $ ValueString s
 
 -- | Base: num-val
 parseNumVal :: Parser Value
