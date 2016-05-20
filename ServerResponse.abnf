@@ -1,0 +1,33 @@
+response        = *(continue-req / response-data) response-done
+
+response-data   = "*" SP (resp-cond-state / resp-cond-bye /
+                  mailbox-data / message-data / capability-data) CRLF
+
+response-done   = response-tagged / response-fatal
+
+response-fatal  = "*" SP resp-cond-bye CRLF
+                    ; Server closes connection immediately
+
+response-tagged = tag SP resp-cond-state CRLF
+
+resp-cond-auth  = ("OK" / "PREAUTH") SP resp-text
+                    ; Authentication condition
+
+resp-cond-bye   = "BYE" SP resp-text
+
+resp-cond-state = ("OK" / "NO" / "BAD") SP resp-text
+                    ; Status condition
+
+resp-specials   = "]"
+
+resp-text       = ["[" resp-text-code "]" SP] text
+
+resp-text-code  = "ALERT" /
+                  "BADCHARSET" [SP "(" astring *(SP astring) ")" ] /
+                  capability-data / "PARSE" /
+                  "PERMANENTFLAGS" SP "("
+                  [flag-perm *(SP flag-perm)] ")" /
+                  "READ-ONLY" / "READ-WRITE" / "TRYCREATE" /
+                  "UIDNEXT" SP nz-number / "UIDVALIDITY" SP nz-number /
+                  "UNSEEN" SP nz-number /
+                  atom [SP 1*<any TEXT-CHAR except "]">]
