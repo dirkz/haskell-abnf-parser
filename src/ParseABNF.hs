@@ -86,7 +86,7 @@ parseCNL = Just <$> parseComment <|> (newline >> return Nothing)
 parseElements :: Parser Definition
 parseElements = do
   alt <- parseAlternation
-  parseCWSP
+  many parseCWSP
   return alt
 
 -- | comment
