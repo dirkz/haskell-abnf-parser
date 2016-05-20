@@ -5,12 +5,15 @@ import Data.Char (digitToInt, ord)
 
 -- | "=" or "=/"
 data DefinedAs = DefinedAs | DefinedAppend
+  deriving (Show, Eq, Ord)
 
 data Rule = Rule String DefinedAs Definition
+  deriving (Show, Eq, Ord)
 
 -- | Currently, this is mostly ignored right now.
 -- | But it could be added to `Definition`.
 data Comment = Comment String
+  deriving (Show, Eq, Ord)
 
 data RepeatCount = Count Int | Infinity
   deriving (Show, Eq, Ord)
@@ -33,6 +36,7 @@ data Definition = DefRef RuleName
                 | DefAltAppend Definition
                 | DefGroup Definition
                 | DefRepeat Repetition Definition
+                | DefValue Value
   deriving (Show, Eq, Ord)
 
 parseRuleList :: Parser [Rule]
@@ -40,9 +44,9 @@ parseRuleList = sepBy1 parseRule (many parseCWSP >> parseCNL)
 
 parseRule :: Parser Rule
 parseRule = do
-  name <- parseRuleNameString
-  def <- parseDefinedAs
-  elm <- parseElements
+  name <- parseRuleNameString <?> "rule name"
+  def <- parseDefinedAs <?> "= or =/"
+  elm <- parseElements <?> "rule definition"
   parseCNL
   return $ Rule name def elm
 
@@ -127,7 +131,8 @@ parseRepeatBoth = do
 
 -- | elemement
 parseElement :: Parser Definition
-parseElement = parseRuleName
+parseElement = parseRuleName <|> parseGroup <|> parseOption <|>
+  DefValue <$> parseCharVal <|> DefValue <$> parseNumVal
 
 -- | Helper: group, option
 parseContained :: Char -> Char -> Parser Definition
@@ -247,3 +252,12 @@ parseDotDigits parser base = parseDotDashDigits parser base '.'
 parseDebug :: Parser a -> String -> Either ParseError a
 parseDebug parser = parse parser "debug"
 
+parseABNF = parse parseRuleList "<parse>"
+
+inputToString :: String -> String
+inputToString input =
+  case parseABNF input of
+    Right rules -> show rules ++ "\n"
+    Left err -> show err ++ "\n"
+
+main = interact inputToString
