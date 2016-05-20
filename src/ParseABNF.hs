@@ -3,6 +3,13 @@ module ParseABNF where
 import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
 
+-- | "=" or "=/"
+data DefinedAs = DefinedAs | DefinedAppend
+
+data Rule = Rule String DefinedAs Definition
+
+-- | Currently, this is mostly ignored right now.
+-- | But it could be added to `Definition`.
 data Comment = Comment String
 
 data RepeatCount = Count Int | Infinity
@@ -21,37 +28,43 @@ data Repetition = RepeatSingle Int
 type RuleName = String
 
 data Definition = DefRef RuleName
-                | DefSeq [Definition]
-                | DefAlt Definition Definition
+                | DefCons [Definition]
+                | DefAlt [Definition]
                 | DefAltAppend Definition
                 | DefGroup Definition
                 | DefRepeat Repetition Definition
-                | DefComment String
-                | DefEmpty
   deriving (Show, Eq, Ord)
 
+parseRuleList :: Parser [Rule]
+parseRuleList = sepBy1 parseRule (many parseCWSP >> parseCNL)
+
+parseRule :: Parser Rule
+parseRule = do
+  name <- parseRuleNameString
+  def <- parseDefinedAs
+  elm <- parseElements
+  parseCNL
+  return $ Rule name def elm
+
 -- | rulename
-parseRuleName :: Parser String
-parseRuleName = do
+parseRuleName :: Parser Definition
+parseRuleName = DefRef <$> parseRuleNameString
+
+-- | Helper: rulename
+parseRuleNameString :: Parser String
+parseRuleNameString = do
   c1 <- (letter <?> "alpha as first char of a rulename")
   cs <- many (letter <|> digit <|> char '-' <?> "alpha-numeric or '-' in rulename")
   return $ c1 : cs
 
-parseElements :: Parser Definition
-parseElements = do
-  alt <- parseAlternation
-  parseCWSP
-  return alt
-
-parseAlternation = undefined
-
--- | comment
-parseComment :: Parser Comment
-parseComment = do
-  char ';'
-  s <- many (parseWSP <|> parseVCHAR)
-  newline
-  return $ Comment s
+parseDefinedAs :: Parser DefinedAs
+parseDefinedAs = do
+  many parseCWSP
+  str <- (string "=" <|> string "=/")
+  many parseCWSP
+  case str of
+    "=" -> return DefinedAs
+    "=/" -> return DefinedAppend
 
 -- | c-wsp, comment or whitespace
 parseCWSP :: Parser (Maybe Comment)
@@ -66,19 +79,73 @@ parseCWSP = try comment <|> (parseWSP >> return Nothing)
 parseCNL :: Parser (Maybe Comment)
 parseCNL = Just <$> parseComment <|> (newline >> return Nothing)
 
+parseElements :: Parser Definition
+parseElements = do
+  alt <- parseAlternation
+  parseCWSP
+  return alt
+
+-- | comment
+parseComment :: Parser Comment
+parseComment = do
+  char ';'
+  s <- many (parseWSP <|> parseVCHAR)
+  newline
+  return $ Comment s
+
+parseAlternation :: Parser Definition
+parseAlternation = DefAlt <$> sepBy1 parseConcatenation sep
+  where
+    sep = many parseCWSP >> char '/' >> many parseCWSP
+
+parseConcatenation :: Parser Definition
+parseConcatenation = DefCons <$> sepBy1 parseRepetition (many1 parseCWSP)
+
+parseRepetition :: Parser Definition
+parseRepetition = try withRepeat <|> parseElement
+  where
+    withRepeat = do
+      rep <- parseRepeat
+      elm <- parseElement
+      return $ DefRepeat rep elm
+
 -- | repeat
 parseRepeat :: Parser Repetition
 parseRepeat = try parseRepeatBoth <|> parseRepeatSingle
 
+-- | Helper: For `parseRepeat`
 parseRepeatSingle :: Parser Repetition
 parseRepeatSingle = many1 parseDIGIT >>= return . toInt 10 >>= return . RepeatSingle
 
+-- | Helper: For `parseRepeat`
 parseRepeatBoth :: Parser Repetition
 parseRepeatBoth = do
   c1 <- maybe (Count 0) Count <$> parseMaybeInt
   char '*'
   c2 <- maybe Infinity Count <$> parseMaybeInt
   return $ Repeat c1 c2
+
+-- | elemement
+parseElement :: Parser Definition
+parseElement = parseRuleName
+
+-- | Helper: group, option
+parseContained :: Char -> Char -> Parser Definition
+parseContained start end = do
+  char start
+  many parseCWSP
+  alt <- parseAlternation
+  many parseCWSP
+  char end
+  return alt
+
+-- | group
+parseGroup :: Parser Definition
+parseGroup = parseContained '(' ')'
+
+-- | option
+parseOption :: Parser Definition
+parseOption = parseContained '[' ']'
 
 -- | char-val
 parseCharVal :: Parser Value
