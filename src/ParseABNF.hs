@@ -2,17 +2,13 @@ module ParseABNF where
 
 import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
+import Debug.Trace (trace, traceShow, traceShowId)
 
 -- | "=" or "=/"
 data DefinedAs = DefinedAs | DefinedAppend
   deriving (Show, Eq, Ord)
 
 data Rule = Rule String DefinedAs Definition
-  deriving (Show, Eq, Ord)
-
--- | Currently, this is mostly ignored right now.
--- | But it could be added to `Definition`.
-data Comment = Comment String
   deriving (Show, Eq, Ord)
 
 data RepeatCount = Count Int | Infinity
@@ -40,7 +36,7 @@ data Definition = DefRef RuleName
   deriving (Show, Eq, Ord)
 
 parseRuleList :: Parser [Rule]
-parseRuleList = sepBy1 parseRule (many parseCWSP >> parseCNL)
+parseRuleList = sepBy1 parseRule (many skipCWSP >> parseCNL)
 
 parseRule :: Parser Rule
 parseRule = do
@@ -63,50 +59,64 @@ parseRuleNameString = do
 
 parseDefinedAs :: Parser DefinedAs
 parseDefinedAs = do
-  many parseCWSP
+  many skipCWSP
   str <- (string "=" <|> string "=/")
-  many parseCWSP
+  many skipCWSP
   case str of
     "=" -> return DefinedAs
     "=/" -> return DefinedAppend
 
--- | c-wsp, comment or whitespace
-parseCWSP :: Parser (Maybe Comment)
-parseCWSP = try comment <|> (parseWSP >> return Nothing)
-  where
-   comment = do
-    com <- parseComment
-    parseWSP
-    return $ Just com
+skipCWSP :: Parser ()
+skipCWSP = try skipWSP <|> (parseCNL >> skipWSP)
 
 -- | c-nl, comment or newline
-parseCNL :: Parser (Maybe Comment)
-parseCNL = Just <$> parseComment <|> (newline >> return Nothing)
+parseCNL :: Parser ()
+parseCNL = parseComment <|> (newline >> return ())
 
 parseElements :: Parser Definition
 parseElements = do
   alt <- parseAlternation
-  many parseCWSP
+  many skipCWSP
   return alt
 
 -- | comment
-parseComment :: Parser Comment
+parseComment :: Parser ()
 parseComment = do
   char ';'
-  s <- many (parseWSP <|> parseVCHAR)
+  many (parseWSP <|> parseVCHAR)
   newline
-  return $ Comment s
+  return $ ()
+
+abnfSepBy1 :: Parser a -> Parser b -> Parser [a]
+abnfSepBy1 p sep = do
+  x <- p
+  xs <- many rest
+  if null xs
+     then return [x]
+     else return $ x:xs
+  where
+    rest = sep >> p
 
 parseAlternation :: Parser Definition
-parseAlternation = DefAlt <$> sepBy1 parseConcatenation sep
+parseAlternation = do
+  xs <- abnfSepBy1 parseConcatenation sep
+  return $ case xs of
+    x:[] -> x
+    xs -> DefAlt $ xs
   where
-    sep = many parseCWSP >> char '/' >> many parseCWSP
+    sep = many skipCWSP >> char '/' >> many skipCWSP
 
 parseConcatenation :: Parser Definition
-parseConcatenation = DefCons <$> sepBy1 parseRepetition (many1 parseCWSP)
+--parseConcatenation = DefCons <$> abnfSepBy1 parseRepetition (many1 skipCWSP)
+parseConcatenation = do
+  x <- parseRepetition
+  xs <- many (many1 skipCWSP >> parseRepetition)
+  if null xs
+     then return $ DefCons [x]
+     else return $ DefCons $ x:xs
 
 parseRepetition :: Parser Definition
-parseRepetition = try withRepeat <|> parseElement
+parseRepetition = withRepeat <|> parseElement <?> "[repeat]element"
   where
     withRepeat = do
       rep <- parseRepeat
@@ -138,9 +148,9 @@ parseElement = parseRuleName <|> parseGroup <|> parseOption <|>
 parseContained :: Char -> Char -> Parser Definition
 parseContained start end = do
   char start
-  many parseCWSP
+  many skipCWSP
   alt <- parseAlternation
-  many parseCWSP
+  many skipCWSP
   char end
   return alt
 
@@ -183,6 +193,9 @@ parseDIGIT = digitToInt <$> oneOf ['\x30'..'\x39']
 -- | Base: WSP
 parseWSP :: Parser Char
 parseWSP = char ' ' <|> char '\t'
+
+skipWSP :: Parser ()
+skipWSP = parseWSP >> return ()
 
 -- | Base: VCHAR
 parseVCHAR :: Parser Char
