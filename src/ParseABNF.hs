@@ -27,7 +27,7 @@ data Repetition = RepeatSingle Int
 type RuleName = String
 
 data Definition = DefRef RuleName
-                | DefCons [Definition]
+                | DefConcat [Definition]
                 | DefAlt [Definition]
                 | DefAltAppend Definition
                 | DefGroup Definition
@@ -99,17 +99,22 @@ abnfSepBy1 p sep = do
   where
     rest = sep >> p
 
-parseAlternation :: Parser Definition
-parseAlternation = do
-  xs <- abnfSepBy1 parseConcatenation sep
+-- | Applies `abnfSepBy1` with p and sep, then checks whether the result
+-- | is a singleton list. If no, use `multiple` to convert it into a single element.
+parseMultiple :: Parser a -> Parser b -> ([a] -> a) -> Parser a
+parseMultiple p sep multiple = do
+  xs <- abnfSepBy1 p sep
   return $ case xs of
-    x:[] -> x
-    xs -> DefAlt $ xs
+             x:[] -> x
+             xs -> multiple xs
+
+parseAlternation :: Parser Definition
+parseAlternation = parseMultiple parseConcatenation sep DefAlt
   where
     sep = many skipCWSP >> char '/' >> many skipCWSP
 
 parseConcatenation :: Parser Definition
-parseConcatenation = DefCons <$> abnfSepBy1 parseRepetition (many1 skipCWSP)
+parseConcatenation = parseMultiple parseRepetition (many1 skipCWSP) DefConcat
 
 parseRepetition :: Parser Definition
 parseRepetition = try withRepeat <|> try parseElement <?> "[repeat]element"
