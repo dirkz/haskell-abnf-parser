@@ -76,7 +76,7 @@ parseCNL = parseComment <|> (newline >> return ())
 parseElements :: Parser Definition
 parseElements = do
   alt <- parseAlternation
-  many skipCWSP
+  many $ try skipCWSP
   return alt
 
 -- | comment
