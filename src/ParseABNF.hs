@@ -87,10 +87,12 @@ parseComment = do
   newline
   return $ ()
 
+-- | Similar to Parsec's `sepBy1`, but uses `try` when trying to parse the
+-- | rest, which consists of a separator and another `p`.
 abnfSepBy1 :: Parser a -> Parser b -> Parser [a]
 abnfSepBy1 p sep = do
   x <- p
-  xs <- many rest
+  xs <- many $ try rest
   if null xs
      then return [x]
      else return $ x:xs
@@ -107,16 +109,10 @@ parseAlternation = do
     sep = many skipCWSP >> char '/' >> many skipCWSP
 
 parseConcatenation :: Parser Definition
---parseConcatenation = DefCons <$> abnfSepBy1 parseRepetition (many1 skipCWSP)
-parseConcatenation = do
-  x <- parseRepetition
-  xs <- many (many1 skipCWSP >> parseRepetition)
-  if null xs
-     then return $ DefCons [x]
-     else return $ DefCons $ x:xs
+parseConcatenation = DefCons <$> abnfSepBy1 parseRepetition (many1 skipCWSP)
 
 parseRepetition :: Parser Definition
-parseRepetition = withRepeat <|> parseElement <?> "[repeat]element"
+parseRepetition = try withRepeat <|> try parseElement <?> "[repeat]element"
   where
     withRepeat = do
       rep <- parseRepeat
