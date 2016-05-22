@@ -8,12 +8,20 @@ import Data.List (foldl')
 
 import ABNF
 
-parseRuleList :: Parser [Rule]
+data ParseState = ParseState {
+    m :: M.Map RuleName Rule
+  } deriving (Show)
+
+initialState = ParseState M.empty
+
+type ABNFParser a = GenParser Char ParseState a
+
+parseRuleList :: ABNFParser [Rule]
 parseRuleList = many1 (try parseRule <|> ws)
   where
     ws = (many (try skipCWSP) >> parseCNL) >> return RuleEmpty
 
-parseRule :: Parser Rule
+parseRule :: ABNFParser Rule
 parseRule = do
   name <- parseRuleNameString <?> "rule name"
   def <- parseDefinedAs <?> "= or =/"
@@ -22,11 +30,11 @@ parseRule = do
   return $ Rule name def elm
 
 -- | rulename
-parseRuleName :: Parser Definition
+parseRuleName :: ABNFParser Definition
 parseRuleName = DefRef <$> parseRuleNameString
 
 -- | Helper: rulename
-parseRuleNameString :: Parser String
+parseRuleNameString :: ABNFParser String
 parseRuleNameString = do
   c1 <- (letter <?> "alpha as first char of a rulename")
   cs <- many $ try (letter <|> digit <|> char '-' <?> "alpha-numeric or '-' in rulename")
@@ -34,7 +42,7 @@ parseRuleNameString = do
               then [c1]
               else c1:cs
 
-parseDefinedAs :: Parser DefinedAs
+parseDefinedAs :: ABNFParser DefinedAs
 parseDefinedAs = do
   many skipCWSP
   str <- (string "=" <|> string "=/")
@@ -43,21 +51,21 @@ parseDefinedAs = do
     "=" -> return DefinedAs
     "=/" -> return DefinedAppend
 
-skipCWSP :: Parser ()
+skipCWSP :: ABNFParser ()
 skipCWSP = skipWSP <|> (parseCNL >> skipWSP)
 
 -- | c-nl, comment or newline
-parseCNL :: Parser ()
+parseCNL :: ABNFParser ()
 parseCNL = parseComment <|> (newline >> return ())
 
-parseElements :: Parser Definition
+parseElements :: ABNFParser Definition
 parseElements = do
   alt <- parseAlternation
   many $ try skipCWSP
   return alt
 
 -- | comment
-parseComment :: Parser ()
+parseComment :: ABNFParser ()
 parseComment = do
   char ';'
   many (parseWSP <|> parseVCHAR)
@@ -66,7 +74,7 @@ parseComment = do
 
 -- | Similar to Parsec's `sepBy1`, but uses `try` when trying to parse the
 -- rest, which consists of a separator and another `p`.
-abnfSepBy1 :: Parser a -> Parser b -> Parser [a]
+abnfSepBy1 :: ABNFParser a -> ABNFParser b -> ABNFParser [a]
 abnfSepBy1 p sep = do
   x <- p
   xs <- many $ try rest
@@ -78,22 +86,22 @@ abnfSepBy1 p sep = do
 
 -- | Applies `abnfSepBy1` with p and sep, then checks whether the result
 -- is a singleton list. If no, use `multiple` to convert it into a single element.
-parseMultiple :: Parser a -> Parser b -> ([a] -> a) -> Parser a
+parseMultiple :: ABNFParser a -> ABNFParser b -> ([a] -> a) -> ABNFParser a
 parseMultiple p sep multiple = do
   xs <- abnfSepBy1 p sep
   return $ case xs of
              x:[] -> x
              xs -> multiple xs
 
-parseAlternation :: Parser Definition
+parseAlternation :: ABNFParser Definition
 parseAlternation = parseMultiple parseConcatenation sep DefAlt
   where
     sep = many skipCWSP >> char '/' >> many skipCWSP
 
-parseConcatenation :: Parser Definition
+parseConcatenation :: ABNFParser Definition
 parseConcatenation = parseMultiple parseRepetition (many1 skipCWSP) DefConcat
 
-parseRepetition :: Parser Definition
+parseRepetition :: ABNFParser Definition
 parseRepetition = try withRepeat <|> try parseElement <?> "[repeat]element"
   where
     withRepeat = do
@@ -102,15 +110,15 @@ parseRepetition = try withRepeat <|> try parseElement <?> "[repeat]element"
       return $ DefRepeat rep elm
 
 -- | repeat
-parseRepeat :: Parser Repetition
+parseRepeat :: ABNFParser Repetition
 parseRepeat = try parseRepeatBoth <|> parseRepeatSingle
 
 -- | Helper: For `parseRepeat`
-parseRepeatSingle :: Parser Repetition
+parseRepeatSingle :: ABNFParser Repetition
 parseRepeatSingle = many1 parseDIGIT >>= return . toInt 10 >>= return . RepeatSingle
 
 -- | Helper: For `parseRepeat`
-parseRepeatBoth :: Parser Repetition
+parseRepeatBoth :: ABNFParser Repetition
 parseRepeatBoth = do
   c1 <- maybe (Count 0) Count <$> parseMaybeInt
   char '*'
@@ -118,12 +126,12 @@ parseRepeatBoth = do
   return $ Repeat c1 c2
 
 -- | elemement
-parseElement :: Parser Definition
+parseElement :: ABNFParser Definition
 parseElement = parseRuleName <|> parseGroup <|> parseOption <|>
   DefValue <$> parseCharVal <|> DefValue <$> parseNumVal
 
 -- | Helper: group, option
-parseContained :: Char -> Char -> Parser Definition
+parseContained :: Char -> Char -> ABNFParser Definition
 parseContained start end = do
   char start
   many skipCWSP
@@ -133,15 +141,15 @@ parseContained start end = do
   return alt
 
 -- | group
-parseGroup :: Parser Definition
+parseGroup :: ABNFParser Definition
 parseGroup = parseContained '(' ')'
 
 -- | option
-parseOption :: Parser Definition
+parseOption :: ABNFParser Definition
 parseOption = parseContained '[' ']'
 
 -- | char-val
-parseCharVal :: Parser Value
+parseCharVal :: ABNFParser Value
 parseCharVal = do
   char '"'
   s <- many $ oneOf ['\x20'..'\x21'] <|> oneOf ['\x23'..'\x7E']
@@ -149,49 +157,49 @@ parseCharVal = do
   return $ ValueString s
 
 -- | Base: num-val
-parseNumVal :: Parser Value
+parseNumVal :: ABNFParser Value
 parseNumVal = char '%' >> (parseBinVal <|> parseDecVal <|> parseHexVal)
 
 -- | Base: bin-val
-parseBinVal :: Parser Value
+parseBinVal :: ABNFParser Value
 parseBinVal = parseGenericVal parseBIT 2 'b'
 
 -- | Base: dec-val
-parseDecVal :: Parser Value
+parseDecVal :: ABNFParser Value
 parseDecVal = parseGenericVal parseDIGIT 10 'd'
 
 -- | Base: hex-val
-parseHexVal :: Parser Value
+parseHexVal :: ABNFParser Value
 parseHexVal = parseGenericVal parseHEXDIG 16 'x'
 
 -- | Base: DIGIT
-parseDIGIT :: Parser Int
+parseDIGIT :: ABNFParser Int
 parseDIGIT = digitToInt <$> oneOf ['\x30'..'\x39']
 
 -- | Base: WSP
-parseWSP :: Parser Char
+parseWSP :: ABNFParser Char
 parseWSP = char ' ' <|> char '\t'
 
-skipWSP :: Parser ()
+skipWSP :: ABNFParser ()
 skipWSP = parseWSP >> return ()
 
 -- | Base: VCHAR
-parseVCHAR :: Parser Char
+parseVCHAR :: ABNFParser Char
 parseVCHAR = oneOf ['\x21'..'\x7E']
 
 -- | Base: BIN
-parseBIT :: Parser Int
+parseBIT :: ABNFParser Int
 parseBIT = digitToInt <$> oneOf ['\x30'..'\x31']
 
 -- | Base: HEXDIG
-parseHEXDIG :: Parser Int
+parseHEXDIG :: ABNFParser Int
 parseHEXDIG = parseDIGIT <|> hexDigit
   where
     minusA = flip (-) $ ord 'A' - 10
     hexDigit = minusA <$> ord <$> oneOf ['A'..'F']
 
 -- | Helper: hex-val, dec-val, bin-val
-parseGenericVal :: Parser Int -> Int -> Char -> Parser Value
+parseGenericVal :: ABNFParser Int -> Int -> Char -> ABNFParser Value
 parseGenericVal parser base charPrefix = do
   char charPrefix
   h1 <- toInt base <$> many1 parser
@@ -217,7 +225,7 @@ toInt base = fst . foldr fn (0, 1)
     fn x (acc, mul) = (acc + x * mul, mul * base)
 
 -- | Helper: Try to parse a decimal Int
-parseMaybeInt :: Parser (Maybe Int)
+parseMaybeInt :: ABNFParser (Maybe Int)
 parseMaybeInt = do
   ds <- many parseDIGIT
   if null ds then return Nothing
@@ -225,23 +233,23 @@ parseMaybeInt = do
 
 -- | Helper: Can parse something like "-" 1*HEXDIG or "." 1*HEXDIG (or DIGIT, BIT).
 -- The HEXDIG depends on the given parser, the result also on the base.
-parseDotDashDigits :: Parser Int -> Int -> Char -> Parser Value
+parseDotDashDigits :: ABNFParser Int -> Int -> Char -> ABNFParser Value
 parseDotDashDigits parser base c = do
   char c
   h1 <- toInt base <$> many1 parser
   return $ if c == '.' then ValueSingle h1 else ValueRange h1 h1
 
 -- | Helper: Parse "-" 1*HEXDIG (or DIGIT, BIT)
-parseDashDigits :: Parser Int -> Int -> Parser Value
+parseDashDigits :: ABNFParser Int -> Int -> ABNFParser Value
 parseDashDigits parser base = parseDotDashDigits parser base '-'
 
 -- | Helper: Parse "." 1*HEXDIG (or DIGIT, BIT)
-parseDotDigits :: Parser Int -> Int -> Parser Value
+parseDotDigits :: ABNFParser Int -> Int -> ABNFParser Value
 parseDotDigits parser base = parseDotDashDigits parser base '.'
 
 -- | Helper: Debug parse a function
-parseDebug :: Parser a -> String -> Either ParseError a
-parseDebug parser = parse parser "debug"
+parseDebug :: ABNFParser a -> String -> Either ParseError a
+parseDebug parser = runParser parser initialState "debug"
 
 -- | Combine two rules according to the rules.
 -- The first rule may not yet exist, which is ok in some cases.
@@ -277,7 +285,7 @@ combineAppend = fmap M.elems . foldl' inserter (Right M.empty)
 -- | Parses a String, consisting of ABNF rules, into the
 -- internal format.
 parseABNF :: String -> Either ParseError [Rule]
-parseABNF = fmap process . parse parseRuleList "<parse>"
+parseABNF = fmap process . runParser parseRuleList initialState "<parse>"
   where
     filterOut = filter (/= RuleEmpty)
     process = filterOut
