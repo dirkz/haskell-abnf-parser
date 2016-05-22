@@ -1,41 +1,10 @@
-module ParseABNF where
+module ParseABNF (parseABNF) where
 
 import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
 import Debug.Trace (trace, traceShow, traceShowId)
-import Data.List (intercalate)
 
--- | "=" or "=/"
-data DefinedAs = DefinedAs | DefinedAppend
-  deriving (Show, Eq, Ord)
-
-data Rule = Rule String DefinedAs Definition
-          | RuleEmpty
-  deriving (Show, Eq, Ord)
-
-data RepeatCount = Count Int | Infinity
-  deriving (Show, Eq, Ord)
-
-data Value = ValueSingle Int
-           | ValueSeq [Int]
-           | ValueRange Int Int
-           | ValueString String
-  deriving (Show, Eq, Ord)
-
-data Repetition = RepeatSingle Int
-                | Repeat RepeatCount RepeatCount
-  deriving (Show, Eq, Ord)
-
-type RuleName = String
-
-data Definition = DefRef RuleName
-                | DefConcat [Definition]
-                | DefAlt [Definition]
-                | DefAltAppend Definition
-                | DefGroup Definition
-                | DefRepeat Repetition Definition
-                | DefValue Value
-  deriving (Show, Eq, Ord)
+import ABNF
 
 parseRuleList :: Parser [Rule]
 parseRuleList = many1 (try parseRule <|> ws)
@@ -277,13 +246,3 @@ parseABNF = fmap process . parse parseRuleList "<parse>"
   where
     filterOut = filter (/= RuleEmpty)
     process = filterOut
-
-inputToString :: String -> String
-inputToString input =
-  case parseABNF input of
-    Right rules -> rulesString rules ++ "\n"
-    Left err -> show err ++ "\n"
-  where
-    rulesString = intercalate "\n" . map show
-
-main = interact inputToString
