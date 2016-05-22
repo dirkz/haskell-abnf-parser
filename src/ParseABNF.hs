@@ -9,6 +9,7 @@ data DefinedAs = DefinedAs | DefinedAppend
   deriving (Show, Eq, Ord)
 
 data Rule = Rule String DefinedAs Definition
+          | RuleEmpty
   deriving (Show, Eq, Ord)
 
 data RepeatCount = Count Int | Infinity
@@ -36,7 +37,9 @@ data Definition = DefRef RuleName
   deriving (Show, Eq, Ord)
 
 parseRuleList :: Parser [Rule]
-parseRuleList = sepBy1 parseRule (many skipCWSP >> parseCNL)
+parseRuleList = many1 (try parseRule <|> ws)
+  where
+    ws = (many (try skipCWSP) >> parseCNL) >> return RuleEmpty
 
 parseRule :: Parser Rule
 parseRule = do
@@ -54,8 +57,10 @@ parseRuleName = DefRef <$> parseRuleNameString
 parseRuleNameString :: Parser String
 parseRuleNameString = do
   c1 <- (letter <?> "alpha as first char of a rulename")
-  cs <- many (letter <|> digit <|> char '-' <?> "alpha-numeric or '-' in rulename")
-  return $ c1 : cs
+  cs <- many $ try (letter <|> digit <|> char '-' <?> "alpha-numeric or '-' in rulename")
+  return $ if null cs
+              then [c1]
+              else c1:cs
 
 parseDefinedAs :: Parser DefinedAs
 parseDefinedAs = do
@@ -67,7 +72,7 @@ parseDefinedAs = do
     "=/" -> return DefinedAppend
 
 skipCWSP :: Parser ()
-skipCWSP = try skipWSP <|> (parseCNL >> skipWSP)
+skipCWSP = skipWSP <|> (parseCNL >> skipWSP)
 
 -- | c-nl, comment or newline
 parseCNL :: Parser ()
