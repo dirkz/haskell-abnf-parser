@@ -3,6 +3,7 @@ module ParseABNF (parseABNF) where
 import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
 import Debug.Trace (trace, traceShow, traceShowId)
+import qualified Data.Map.Strict as M
 
 import ABNF
 
@@ -63,7 +64,7 @@ parseComment = do
   return $ ()
 
 -- | Similar to Parsec's `sepBy1`, but uses `try` when trying to parse the
--- | rest, which consists of a separator and another `p`.
+-- rest, which consists of a separator and another `p`.
 abnfSepBy1 :: Parser a -> Parser b -> Parser [a]
 abnfSepBy1 p sep = do
   x <- p
@@ -75,7 +76,7 @@ abnfSepBy1 p sep = do
     rest = sep >> p
 
 -- | Applies `abnfSepBy1` with p and sep, then checks whether the result
--- | is a singleton list. If no, use `multiple` to convert it into a single element.
+-- is a singleton list. If no, use `multiple` to convert it into a single element.
 parseMultiple :: Parser a -> Parser b -> ([a] -> a) -> Parser a
 parseMultiple p sep multiple = do
   xs <- abnfSepBy1 p sep
@@ -222,7 +223,7 @@ parseMaybeInt = do
              else return $ Just $ toInt 10 ds
 
 -- | Helper: Can parse something like "-" 1*HEXDIG or "." 1*HEXDIG (or DIGIT, BIT).
--- | The HEXDIG depends on the given parser, the result also on the base.
+-- The HEXDIG depends on the given parser, the result also on the base.
 parseDotDashDigits :: Parser Int -> Int -> Char -> Parser Value
 parseDotDashDigits parser base c = do
   char c
@@ -241,6 +242,8 @@ parseDotDigits parser base = parseDotDashDigits parser base '.'
 parseDebug :: Parser a -> String -> Either ParseError a
 parseDebug parser = parse parser "debug"
 
+-- | Parses a String, consisting of ABNF rules, into the
+-- internal format.
 parseABNF :: String -> Either ParseError [Rule]
 parseABNF = fmap process . parse parseRuleList "<parse>"
   where
