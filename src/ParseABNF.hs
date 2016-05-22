@@ -1,4 +1,4 @@
-module ParseABNF (parseABNF) where
+module ParseABNF where
 
 import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
@@ -8,16 +8,25 @@ import Data.List (foldl')
 
 import ABNF
 
+-- | Needed for tracking rule definitions with '=/', to check whether
+-- they extend existing rules or not.
 data ParseState = ParseState {
-    m :: M.Map RuleName Rule
-  } deriving (Show)
+  m :: M.Map RuleName Rule
+, errorString :: Maybe String
+} deriving (Show, Eq)
 
-initialState = ParseState M.empty
+initialState = ParseState { m = M.empty,  errorString = Nothing }
 
 type ABNFParser a = GenParser Char ParseState a
 
 parseRuleList :: ABNFParser [Rule]
-parseRuleList = many1 (try parseRule <|> ws)
+parseRuleList = do
+  rs <- many1 (try parseRule <|> ws)
+  st <- getState
+  case errorString st of
+    Just s -> fail s
+    Nothing -> setState st
+  return rs
   where
     ws = (many (try skipCWSP) >> parseCNL) >> return RuleEmpty
 
@@ -27,7 +36,25 @@ parseRule = do
   def <- parseDefinedAs <?> "= or =/"
   elm <- parseElements <?> "rule definition"
   parseCNL
-  return $ Rule name def elm
+
+  let rule = Rule name def elm
+
+  st <- getState
+  let newSt = verifyRule st rule
+  case errorString newSt of
+    Nothing -> setState newSt
+    Just msg -> setState newSt >>= fail msg
+
+  return rule
+
+verifyRule :: ParseState -> Rule -> ParseState
+verifyRule (ParseState st _) r@(Rule name _ _) =
+  case comb of
+    Left s -> ParseState st $ Just s
+    Right rule -> ParseState (M.insert name rule st) Nothing
+  where
+    existing = M.lookup name st
+    comb = combine existing r
 
 -- | rulename
 parseRuleName :: ABNFParser Definition
@@ -45,7 +72,7 @@ parseRuleNameString = do
 parseDefinedAs :: ABNFParser DefinedAs
 parseDefinedAs = do
   many skipCWSP
-  str <- (string "=" <|> string "=/")
+  str <- (try $ string "=/") <|> string "="
   many skipCWSP
   case str of
     "=" -> return DefinedAs
@@ -251,36 +278,32 @@ parseDotDigits parser base = parseDotDashDigits parser base '.'
 parseDebug :: ABNFParser a -> String -> Either ParseError a
 parseDebug parser = runParser parser initialState "debug"
 
--- | Combine two rules according to the rules.
+-- | Combine two rules. The first is the existing one.
 -- The first rule may not yet exist, which is ok in some cases.
 combine :: Maybe Rule -> Rule -> Either String Rule
+
+-- | Combines a '=' defined rule with an existing Nothing.
 combine Nothing r@(Rule _ DefinedAs _) = Right r
+
+-- | Combines a '=/' defined rule with an existing Nothing.
 combine Nothing (Rule name DefinedAppend _) =
-  Left $ "Rule '" ++ name ++ "' can't be appended to nothing"
+  Left $ "Rule definition '" ++ name ++ " =/': No previous definition to append to"
+
+-- | Combine a '=' defined rule with an already existing rule.
 combine (Just (Rule name DefinedAs _)) (Rule _ DefinedAs _) =
   Left $ "Duplicate rule '" ++ name ++ "'"
-combine (Just (Rule name DefinedAs (DefAlt rs1))) (Rule _ _ (DefAlt rs2)) =
-  Right $ Rule name DefinedAs (DefAlt $ rs1 ++ rs2)
-combine (Just (Rule name DefinedAs (DefAlt rs))) (Rule _ _ def2) =
-  Right $ Rule name DefinedAs (DefAlt $ rs ++ [def2])
-combine (Just (Rule name DefinedAs def1)) (Rule _ _ def2) =
-  Right $ Rule name DefinedAs (DefAlt $ [def1, def2])
 
--- | Combines append rules
-combineAppend :: [Rule] -> Either String [Rule]
-combineAppend = fmap M.elems . foldl' inserter (Right M.empty)
-  where
-    inserter (Left acc) _ = Left acc
-    inserter (Right m) rule2@(Rule name defAl def) =
-      case defAl of
-        DefinedAs ->
-          case (M.lookup name m) of
-            Just _ -> Left $ "Rule '" ++ show name ++ "' already exists. Use '/='."
-            Nothing -> Right $ M.insert name rule2 m
-        DefinedAppend ->
-            case combine (M.lookup name m) rule2 of
-              Right r -> Right $ M.insert name r m
-              Left s -> Left s
+-- | Combine a '=/' rule with an existing '=' rule.
+combine (Just (Rule name DefinedAs (DefAlt rs1))) (Rule _ DefinedAppend (DefAlt rs2)) =
+  Right $ Rule name DefinedAs (DefAlt $ rs1 ++ rs2)
+
+-- | Combine a '=/' defined rule with an existing DefAlt rule.
+combine (Just (Rule name DefinedAs (DefAlt rs))) (Rule _ DefinedAppend def2) =
+  Right $ Rule name DefinedAs (DefAlt $ rs ++ [def2])
+
+-- | Combine a '=/' rule with an existing rule, neither is DefAlt.
+combine (Just (Rule name DefinedAs def1)) (Rule _ DefinedAppend def2) =
+  Right $ Rule name DefinedAs (DefAlt $ [def1, def2])
 
 -- | Parses a String, consisting of ABNF rules, into the
 -- internal format.
