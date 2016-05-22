@@ -3,6 +3,7 @@ module ParseABNF where
 import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
 import Debug.Trace (trace, traceShow, traceShowId)
+import Data.List (intercalate)
 
 -- | "=" or "=/"
 data DefinedAs = DefinedAs | DefinedAppend
@@ -271,12 +272,18 @@ parseDotDigits parser base = parseDotDashDigits parser base '.'
 parseDebug :: Parser a -> String -> Either ParseError a
 parseDebug parser = parse parser "debug"
 
-parseABNF = parse parseRuleList "<parse>"
+parseABNF :: String -> Either ParseError [Rule]
+parseABNF = fmap process . parse parseRuleList "<parse>"
+  where
+    filterOut = filter (/= RuleEmpty)
+    process = filterOut
 
 inputToString :: String -> String
 inputToString input =
   case parseABNF input of
-    Right rules -> show rules ++ "\n"
+    Right rules -> rulesString rules ++ "\n"
     Left err -> show err ++ "\n"
+  where
+    rulesString = intercalate "\n" . map show
 
 main = interact inputToString
