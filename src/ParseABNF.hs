@@ -4,6 +4,7 @@ import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
 import Debug.Trace (trace, traceShow, traceShowId)
 import qualified Data.Map.Strict as M
+import Data.List (foldl')
 
 import ABNF
 
@@ -241,6 +242,37 @@ parseDotDigits parser base = parseDotDashDigits parser base '.'
 -- | Helper: Debug parse a function
 parseDebug :: Parser a -> String -> Either ParseError a
 parseDebug parser = parse parser "debug"
+
+-- | Combine two rules according to the rules.
+-- The first rule may not yet exist, which is ok in some cases.
+combine :: Maybe Rule -> Rule -> Either String Rule
+combine Nothing r@(Rule _ DefinedAs _) = Right r
+combine Nothing (Rule name DefinedAppend _) =
+  Left $ "Rule '" ++ name ++ "' can't be appended to nothing"
+combine (Just (Rule name DefinedAs _)) (Rule _ DefinedAs _) =
+  Left $ "Duplicate rule '" ++ name ++ "'"
+combine (Just (Rule name DefinedAs (DefAlt rs1))) (Rule _ _ (DefAlt rs2)) =
+  Right $ Rule name DefinedAs (DefAlt $ rs1 ++ rs2)
+combine (Just (Rule name DefinedAs (DefAlt rs))) (Rule _ _ def2) =
+  Right $ Rule name DefinedAs (DefAlt $ rs ++ [def2])
+combine (Just (Rule name DefinedAs def1)) (Rule _ _ def2) =
+  Right $ Rule name DefinedAs (DefAlt $ [def1, def2])
+
+-- | Combines append rules
+combineAppend :: [Rule] -> Either String [Rule]
+combineAppend = fmap M.elems . foldl' inserter (Right M.empty)
+  where
+    inserter (Left acc) _ = Left acc
+    inserter (Right m) rule2@(Rule name defAl def) =
+      case defAl of
+        DefinedAs ->
+          case (M.lookup name m) of
+            Just _ -> Left $ "Rule '" ++ show name ++ "' already exists. Use '/='."
+            Nothing -> Right $ M.insert name rule2 m
+        DefinedAppend ->
+            case combine (M.lookup name m) rule2 of
+              Right r -> Right $ M.insert name r m
+              Left s -> Left s
 
 -- | Parses a String, consisting of ABNF rules, into the
 -- internal format.
