@@ -31,3 +31,10 @@ resp-text-code  = "ALERT" /
                   "UIDNEXT" SP nz-number / "UIDVALIDITY" SP nz-number /
                   "UNSEEN" SP nz-number /
                   atom [SP 1*<any TEXT-CHAR except "]">]
+
+atom            = 1*ATOM-CHAR
+
+ATOM-CHAR       = <any CHAR except atom-specials>
+
+atom-specials   = "(" / ")" / "{" / SP / CTL / list-wildcards /
+                  quoted-specials / resp-specials
