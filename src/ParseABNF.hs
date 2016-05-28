@@ -274,9 +274,13 @@ combine Nothing (Rule name DefinedAppend _) =
 combine (Just (Rule name DefinedAs _)) (Rule _ DefinedAs _) =
   Left $ "Duplicate rule '" ++ name ++ "'"
 
--- | Combine a '=/' rule with an existing '=' rule.
+-- | Combine a '=/' rule with an existing '=' rule, where both are DefAlt.
 combine (Just (Rule name DefinedAs (DefAlt rs1))) (Rule _ DefinedAppend (DefAlt rs2)) =
   Right $ Rule name DefinedAs (DefAlt $ rs1 ++ rs2)
+
+-- | Combine a '=/' rule with an existing '=' rule, where the 2nd is DefAlt.
+combine (Just (Rule name DefinedAs def)) (Rule _ DefinedAppend (DefAlt rs2)) =
+  Right $ Rule name DefinedAs (DefAlt $ def:rs2)
 
 -- | Combine a '=/' defined rule with an existing DefAlt rule.
 combine (Just (Rule name DefinedAs (DefAlt rs))) (Rule _ DefinedAppend def2) =

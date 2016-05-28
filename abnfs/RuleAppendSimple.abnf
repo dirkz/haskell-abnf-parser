@@ -1,5 +1,5 @@
 a = b / c
-a /=/ d / e
+a =/ d / e
 b = "b"
 c = "c"
 d = "d"
