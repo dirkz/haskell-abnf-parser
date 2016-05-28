@@ -125,7 +125,7 @@ command         = tag SP (command-any / command-auth / command-nonauth /
                   command-select) CRLF
                     ; Modal based on state
 
-command-any     = "CAPABILITY" / "LOGOUT" / "NOOP" / x-command
+command-any     = "CAPABILITY" / "LOGOUT" / "NOOP"
                     ; Valid in all states
 
 command-auth    = append / create / delete / examine / list / lsub /
@@ -477,8 +477,6 @@ uniqueid        = nz-number
 unsubscribe     = "UNSUBSCRIBE" SP mailbox
 
 userid          = astring
-
-x-command       = "X" atom <experimental command arguments>
 
 zone            = ("+" / "-") 4DIGIT
                     ; Signed four-digit value of hhmm representing
