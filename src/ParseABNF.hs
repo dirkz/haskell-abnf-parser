@@ -26,14 +26,14 @@ parseRuleList = do
   eof
   return rules
   where
-    ws = (many (try skipCWSP) >> parseCNL) >> return RuleEmpty
+    ws = (many (try skipCWSP) >> skipCNL) >> return RuleEmpty
 
 parseRule :: ABNFParser Rule
 parseRule = do
   name <- parseRuleNameString <?> "rule name"
   def <- parseDefinedAs <?> "= or =/"
   elm <- parseElements <?> "rule definition"
-  parseCNL
+  skipCNL
   let rule = Rule name def elm
   return rule
 
@@ -60,11 +60,11 @@ parseDefinedAs = do
     "=/" -> return DefinedAppend
 
 skipCWSP :: ABNFParser ()
-skipCWSP = skipWSP <|> (parseCNL >> skipWSP)
+skipCWSP = try skipWSP <|> (try skipCNL >> skipWSP) <?> "CWSP"
 
 -- | c-nl, comment or newline
-parseCNL :: ABNFParser ()
-parseCNL = parseComment <|> (newline >> return ())
+skipCNL :: ABNFParser ()
+skipCNL = parseComment <|> (newline >> return ()) <?> "CNL"
 
 parseElements :: ABNFParser Definition
 parseElements = do
