@@ -4,12 +4,21 @@ import Text.ParserCombinators.Parsec
 import Data.Char (digitToInt, ord)
 import Debug.Trace (trace, traceShow, traceShowId)
 import qualified Data.Map.Strict as M
+import qualified Data.Set as S
 import Data.List (foldl')
 
 import ABNF
 
 type ABNFParser a = GenParser Char () a
 type RuleMap = M.Map String Rule
+
+-- | Parses a String, consisting of ABNF rules, into the
+-- internal format.
+parseABNF :: String -> Either ParseError [Rule]
+parseABNF s = rules1 s >>= concatABNF >>= checkConsistency
+  where
+    filterOut = filter (/= RuleEmpty)
+    rules1 = fmap filterOut . runParser parseRuleList () "<parse>"
 
 parseRuleList :: ABNFParser [Rule]
 parseRuleList = many1 (try parseRule <|> ws)
@@ -274,13 +283,52 @@ combine (Just (Rule name DefinedAs (DefAlt rs))) (Rule _ DefinedAppend def2) =
 combine (Just (Rule name DefinedAs def1)) (Rule _ DefinedAppend def2) =
   Right $ Rule name DefinedAs (DefAlt $ [def1, def2])
 
--- | Parses a String, consisting of ABNF rules, into the
--- internal format.
-parseABNF :: String -> Either ParseError [Rule]
-parseABNF s = rules1 s >>= concatABNF
+-- | Converts a list of rules into a RuleMap (mapping rule names to rules)
+rulesMap :: [Rule] -> RuleMap
+rulesMap = M.fromList . map kv
   where
-    filterOut = filter (/= RuleEmpty)
-    rules1 = fmap filterOut . runParser parseRuleList () "<parse>"
+    kv rule@(Rule name _ _) = (name, rule)
+
+-- | "Shortcut"
+extractRuleRefsFromDefinitions = concat . map extractRuleRefsFromDefinition
+
+-- | Extracts a list of rule references (strings) from a definition
+extractRuleRefsFromDefinition :: Definition -> [String]
+extractRuleRefsFromDefinition (DefRef s) = [s]
+extractRuleRefsFromDefinition (DefConcat defs) = extractRuleRefsFromDefinitions defs
+extractRuleRefsFromDefinition (DefAlt defs) = extractRuleRefsFromDefinitions defs
+extractRuleRefsFromDefinition (DefAltAppend def) = extractRuleRefsFromDefinitions [def]
+extractRuleRefsFromDefinition (DefGroup def) = extractRuleRefsFromDefinitions [def]
+extractRuleRefsFromDefinition (DefRepeat _ def) = extractRuleRefsFromDefinitions [def]
+extractRuleRefsFromDefinition _ = []
+
+extractRuleRefsFromRule :: Rule -> [String]
+extractRuleRefsFromRule (Rule _ _ def) = extractRuleRefsFromDefinition def
+
+-- | Checks a list of rules for consistency, that is, e.g., are all
+-- referenced rules acually contained in the rules?
+checkConsistency :: [Rule] -> Either ParseError [Rule]
+checkConsistency rs = foldr folder (Right []) rs
+  where
+    ruleMap = rulesMap rs
+    folder :: Rule -> Either ParseError [Rule] -> Either ParseError [Rule]
+    folder _ (Left s) = Left s
+    folder r@(Rule name _ _) (Right rs) =
+      let
+        refs = extractRuleRefsFromRule r
+        notContained = map defined refs
+        errors = filter (/= Nothing) notContained
+        ok = null errors
+        theError = maybe "unknown" id $ head errors
+      in
+        if ok then Right $ r : rs
+              else fail $ "Rule '" ++ name ++ "' referencing undefined rule: '" ++ theError ++ "'"
+    defined :: String -> Maybe String
+    defined s =
+      case M.lookup s ruleMap of
+        Nothing -> Just s
+        (Just _) -> Nothing
+
 
 -- | Concatenates rules defined with '=/'
 concatABNF :: [Rule] -> Either ParseError [Rule]
