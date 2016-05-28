@@ -8,25 +8,11 @@ import Data.List (foldl')
 
 import ABNF
 
--- | Needed for tracking rule definitions with '=/', to check whether
--- they extend existing rules or not.
-data ParseState = ParseState {
-  m :: M.Map RuleName Rule
-, errorString :: Maybe String
-} deriving (Show, Eq)
-
-initialState = ParseState { m = M.empty,  errorString = Nothing }
-
-type ABNFParser a = GenParser Char ParseState a
+type ABNFParser a = GenParser Char () a
+type RuleMap = M.Map String Rule
 
 parseRuleList :: ABNFParser [Rule]
-parseRuleList = do
-  rs <- many1 (try parseRule <|> ws)
-  st <- getState
-  case errorString st of
-    Just s -> fail s
-    Nothing -> setState st
-  return rs
+parseRuleList = many1 (try parseRule <|> ws)
   where
     ws = (many (try skipCWSP) >> parseCNL) >> return RuleEmpty
 
@@ -36,25 +22,8 @@ parseRule = do
   def <- parseDefinedAs <?> "= or =/"
   elm <- parseElements <?> "rule definition"
   parseCNL
-
   let rule = Rule name def elm
-
-  st <- getState
-  let newSt = verifyRule st rule
-  case errorString newSt of
-    Nothing -> setState newSt
-    Just msg -> setState newSt >>= fail msg
-
   return rule
-
-verifyRule :: ParseState -> Rule -> ParseState
-verifyRule (ParseState st _) r@(Rule name _ _) =
-  case comb of
-    Left s -> ParseState st $ Just s
-    Right rule -> ParseState (M.insert name rule st) Nothing
-  where
-    existing = M.lookup name st
-    comb = combine existing r
 
 -- | rulename
 parseRuleName :: ABNFParser Definition
@@ -276,7 +245,7 @@ parseDotDigits parser base = parseDotDashDigits parser base '.'
 
 -- | Helper: Debug parse a function
 parseDebug :: ABNFParser a -> String -> Either ParseError a
-parseDebug parser = runParser parser initialState "debug"
+parseDebug parser = runParser parser () "debug"
 
 -- | Combine two rules. The first is the existing one.
 -- The first rule may not yet exist, which is ok in some cases.
@@ -308,7 +277,22 @@ combine (Just (Rule name DefinedAs def1)) (Rule _ DefinedAppend def2) =
 -- | Parses a String, consisting of ABNF rules, into the
 -- internal format.
 parseABNF :: String -> Either ParseError [Rule]
-parseABNF = fmap process . runParser parseRuleList initialState "<parse>"
+parseABNF s = rules1 s >>= concatABNF
   where
     filterOut = filter (/= RuleEmpty)
-    process = filterOut
+    rules1 = fmap filterOut . runParser parseRuleList () "<parse>"
+
+-- | Concatenates rules defined with '=/'
+concatABNF :: [Rule] -> Either ParseError [Rule]
+concatABNF rs = foldl' folder (Right M.empty) rs >>= return . M.elems
+  where
+    folder :: Either ParseError RuleMap -> Rule -> Either ParseError RuleMap
+    folder (Left e) _ = Left e
+    folder (Right m) rule@(Rule name _ _) =
+      let
+        r1 = M.lookup name m
+        r2 = combine r1 rule
+      in
+        case r2 of
+          Right r -> Right $ M.insert name r m
+          Left s -> fail s
