@@ -222,10 +222,12 @@ parseBIT = digitToInt <$> oneOf ['\x30'..'\x31']
 
 -- | Base: HEXDIG
 parseHEXDIG :: ABNFParser Int
-parseHEXDIG = parseDIGIT <|> hexDigit
+parseHEXDIG = parseDIGIT <|> hexDigitBig <|> hexDigitSmall
   where
-    minusA = flip (-) $ ord 'A' - 10
-    hexDigit = minusA <$> ord <$> oneOf ['A'..'F']
+    minusCapitalA = flip (-) $ ord 'A' - 10
+    minusSmallA = flip (-) $ ord 'a' - 10
+    hexDigitBig = minusCapitalA <$> ord <$> oneOf ['A'..'F']
+    hexDigitSmall = minusCapitalA <$> ord <$> oneOf ['a'..'f']
 
 -- | Helper: hex-val, dec-val, bin-val
 parseGenericVal :: ABNFParser Int -> Int -> Char -> ABNFParser Value
