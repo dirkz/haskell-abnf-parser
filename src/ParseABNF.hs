@@ -23,6 +23,7 @@ parseABNF s = rules1 (appendCoreRules s) >>= concatABNF >>= checkConsistency
 coreABNFRules = [ "ALPHA = %x41-5A / %x61-7A"
                 , "DIGIT = %x30-39"
                 , "HEXDIG = DIGIT / \"A\" / \"B\" / \"C\" / \"D\" / \"E\" / \"F\""
+                , "HEXDIG =/ DIGIT / \"a\" / \"b\" / \"c\" / \"d\" / \"e\" / \"f\""
                 , "DQUOTE = %x22"
                 , "SP = %x20"
                 , "HTAB = %x09"
