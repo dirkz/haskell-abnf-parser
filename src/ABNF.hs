@@ -30,4 +30,5 @@ data Definition = DefRef RuleName
                 | DefGroup Definition
                 | DefRepeat Repetition Definition
                 | DefValue Value
+                | DefOptional Definition
   deriving (Show, Eq, Ord)

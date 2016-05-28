@@ -154,7 +154,7 @@ parseGroup = parseContained '(' ')'
 
 -- | option
 parseOption :: ABNFParser Definition
-parseOption = parseContained '[' ']'
+parseOption = DefOptional <$> parseContained '[' ']'
 
 -- | char-val
 parseCharVal :: ABNFParser Value
