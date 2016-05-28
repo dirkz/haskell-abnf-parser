@@ -21,7 +21,10 @@ parseABNF s = rules1 s >>= concatABNF >>= checkConsistency
     rules1 = fmap filterOut . runParser parseRuleList () "<parse>"
 
 parseRuleList :: ABNFParser [Rule]
-parseRuleList = many1 (try parseRule <|> ws)
+parseRuleList = do
+  rules <- many1 (try parseRule <|> ws)
+  eof
+  return rules
   where
     ws = (many (try skipCWSP) >> parseCNL) >> return RuleEmpty
 

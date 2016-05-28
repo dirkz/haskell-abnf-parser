@@ -1,8 +1,8 @@
 a = b / c
-a =/ d / e
+a /=/ d / e
 b = "b"
 c = "c"
 d = "d"
 e = "e"
-b =/ what
+b =/ a / b
 
