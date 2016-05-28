@@ -30,11 +30,42 @@ resp-text-code  = "ALERT" /
                   "READ-ONLY" / "READ-WRITE" / "TRYCREATE" /
                   "UIDNEXT" SP nz-number / "UIDVALIDITY" SP nz-number /
                   "UNSEEN" SP nz-number /
-                  atom [SP 1*<any TEXT-CHAR except "]">]
+                  atom [SP 1*non-bracket-close-text-char]
+
+non-bracket-close-text-char = %d32-92 / %d94-126
 
 atom            = 1*ATOM-CHAR
 
-ATOM-CHAR       = <any CHAR except atom-specials>
+ATOM-CHAR       = ; <any CHAR except atom-specials>
+                  "!" / "#" / "$" / "&" / "'" / "(" / ")" / "+" / "," / "-" / "." / "/" / "0" / "1" / "2" / "3" / "4" / "5" / "6" / "7" / "8" / "9" / ":" / ";" / "<" / "=" / ">" / "?" / "@" / "A" / "B" / "C" / "D" / "E" / "F" / "G" / "H" / "I" / "J" / "K" / "L" / "M" / "N" / "O" / "P" / "Q" / "R" / "S" / "T" / "U" / "V" / "W" / "X" / "Y" / "Z" / "[" / "^" / "_" / "`" / "a" / "b" / "c" / "d" / "e" / "f" / "g" / "h" / "i" / "j" / "k" / "l" / "m" / "n" / "o" / "p" / "q" / "r" / "s" / "t" / "u" / "v" / "w" / "x" / "y" / "z" / "{" / "|" / "}" / "~"
 
 atom-specials   = "(" / ")" / "{" / SP / CTL / list-wildcards /
                   quoted-specials / resp-specials
+
+list-wildcards  = "%" / "*"
+
+quoted-specials = DQUOTE / "\"
+
+tag             = ; 1*<any ASTRING-CHAR except "+">
+                  1*("!" / "#" / "$" / "&" / "'" / "(" / ")" / "," / "-" / "." / "/" / "0" / "1" / "2" / "3" / "4" / "5" / "6" / "7" / "8" / "9" / ":" / ";" / "<" / "=" / ">" / "?" / "@" / "A" / "B" / "C" / "D" / "E" / "F" / "G" / "H" / "I" / "J" / "K" / "L" / "M" / "N" / "O" / "P" / "Q" / "R" / "S" / "T" / "U" / "V" / "W" / "X" / "Y" / "Z" / "[" / "^" / "_" / "`" / "a" / "b" / "c" / "d" / "e" / "f" / "g" / "h" / "i" / "j" / "k" / "l" / "m" / "n" / "o" / "p" / "q" / "r" / "s" / "t" / "u" /
+                  "v" / "w" / "x" / "y" / "z" / "{" / "|" / "}" / "~" /
+                  "]")
+
+mailbox-data    =  "FLAGS" SP flag-list / "LIST" SP mailbox-list /
+                   "LSUB" SP mailbox-list / "SEARCH" *(SP nz-number) /
+                   "STATUS" SP mailbox SP "(" [status-att-list] ")" /
+                   number SP "EXISTS" / number SP "RECENT"
+
+mailbox-list    = "(" [mbx-list-flags] ")" SP
+                   (DQUOTE QUOTED-CHAR DQUOTE / nil) SP mailbox
+
+mbx-list-flags  = *(mbx-list-oflag SP) mbx-list-sflag
+                  *(SP mbx-list-oflag) /
+                  mbx-list-oflag *(SP mbx-list-oflag)
+
+mbx-list-oflag  = "\Noinferiors" / flag-extension
+                    ; Other flags; multiple possible per LIST response
+
+mbx-list-sflag  = "\Noselect" / "\Marked" / "\Unmarked"
+                    ; Selectability flags; only one per LIST response
+

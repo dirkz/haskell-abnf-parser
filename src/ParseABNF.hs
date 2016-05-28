@@ -5,7 +5,7 @@ import Data.Char (digitToInt, ord)
 import Debug.Trace (trace, traceShow, traceShowId)
 import qualified Data.Map.Strict as M
 import qualified Data.Set as S
-import Data.List (foldl')
+import Data.List (foldl', intercalate)
 
 import ABNF
 
@@ -15,10 +15,31 @@ type RuleMap = M.Map String Rule
 -- | Parses a String, consisting of ABNF rules, into the
 -- internal format.
 parseABNF :: String -> Either ParseError [Rule]
-parseABNF s = rules1 s >>= concatABNF >>= checkConsistency
+parseABNF s = rules1 (appendCoreRules s) >>= concatABNF >>= checkConsistency
   where
     filterOut = filter (/= RuleEmpty)
     rules1 = fmap filterOut . runParser parseRuleList () "<parse>"
+
+coreABNFRules = [ "ALPHA = %x41-5A / %x61-7A"
+                , "DIGIT = %x30-39"
+                , "HEXDIG = DIGIT / \"A\" / \"B\" / \"C\" / \"D\" / \"E\" / \"F\""
+                , "DQUOTE = %x22"
+                , "SP = %x20"
+                , "HTAB = %x09"
+                , "WSP = SP / HTAB"
+                , "LWSP = *(WSP / CRLF WSP)"
+                , "VCHAR = %x21-7E"
+                , "CHAR = %x01-7F"
+                , "OCTET = %x00-FF"
+                , "CTL = %x00-1F / %x7F"
+                , "CR = %x0D"
+                , "LF = %x0A"
+                , "CRLF = CR LF"
+                , "BIT = \"0\" / \"1\""
+                ]
+
+appendCoreRules :: String -> String
+appendCoreRules s = s ++ intercalate "\n" coreABNFRules ++ "\n"
 
 parseRuleList :: ABNFParser [Rule]
 parseRuleList = do
@@ -60,7 +81,7 @@ parseDefinedAs = do
     "=/" -> return DefinedAppend
 
 skipCWSP :: ABNFParser ()
-skipCWSP = try skipWSP <|> (try skipCNL >> skipWSP) <?> "CWSP"
+skipCWSP = skipWSP <|> (skipCNL >> skipWSP) <?> "CWSP"
 
 -- | c-nl, comment or newline
 skipCNL :: ABNFParser ()
