@@ -6,6 +6,7 @@ import Data.Maybe ( fromMaybe )
 import System.Environment
 
 import ParseABNF
+import ProcessABNF
 
 data Options = Options
   { optRoot :: Maybe String
@@ -30,13 +31,21 @@ parserOpts progName argv =
     (o,n,[]  ) -> return (foldl (flip id) defaultOptions o, n)
     (_,_,errs) -> ioError (userError (concat errs ++ usageInfo (header progName) options))
 
+convertShowEither :: Show e => Either e a -> Either String a
+convertShowEither (Right a) = Right a
+convertShowEither (Left e) = Left $ show e
+
 processInput :: Options -> String -> IO ()
 processInput opts input =
-  case parseABNF input of
-    Right rules -> putStrLn $ rulesString rules ++ "\n"
-    Left err -> ioError (userError (show err ++ "\n"))
+  case convertShowEither (parseABNF input) >>= process of
+    Right rules -> putStrLn $ rulesString rules
+    Left err -> ioError (userError (err ++ "\n"))
   where
     rulesString = intercalate "\n" . map show
+    process rs =
+      case optRoot opts of
+        Just root -> pruneABNF root rs
+        Nothing -> Right rs
 
 main :: IO ()
 main = do

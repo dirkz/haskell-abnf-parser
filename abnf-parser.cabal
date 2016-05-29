@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     ABNF, ParseABNF
+  exposed-modules:     ABNF, ParseABNF, ProcessABNF
   build-depends:       base >= 4.7 && < 5
                      , parsec >= 3.1.11
                      , containers >= 0.5.6.2
