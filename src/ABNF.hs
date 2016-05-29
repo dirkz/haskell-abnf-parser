@@ -26,8 +26,6 @@ type RuleName = String
 data Definition = DefRef RuleName
                 | DefConcat [Definition]
                 | DefAlt [Definition]
-                | DefAltAppend Definition
-                | DefGroup Definition
                 | DefRepeat Repetition Definition
                 | DefValue Value
                 | DefOptional Definition

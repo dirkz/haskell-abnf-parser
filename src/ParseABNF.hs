@@ -328,8 +328,6 @@ extractRuleRefsFromDefinition :: Definition -> [String]
 extractRuleRefsFromDefinition (DefRef s) = [s]
 extractRuleRefsFromDefinition (DefConcat defs) = extractRuleRefsFromDefinitions defs
 extractRuleRefsFromDefinition (DefAlt defs) = extractRuleRefsFromDefinitions defs
-extractRuleRefsFromDefinition (DefAltAppend def) = extractRuleRefsFromDefinitions [def]
-extractRuleRefsFromDefinition (DefGroup def) = extractRuleRefsFromDefinitions [def]
 extractRuleRefsFromDefinition (DefRepeat _ def) = extractRuleRefsFromDefinitions [def]
 extractRuleRefsFromDefinition _ = []
 
